@@ -1,0 +1,26 @@
+# dsh-roundtable-harness —— bundle 层
+#
+# 声明：package.json `dsh.bundle.patch = "./cordis.patch.yml"`。
+# 宿主读取点：dsh-app-boot 读 `dsh.bundle`，加载本文件并把每一行 insert 进
+# 组合；`name` 用裸包名，宿主从 profile 的 node_modules 解析。
+#
+# 本文件必须保持「顶层 YAML 数组」形态。
+#
+# 一行说明：
+#   roundtable-harness —— 插件主入口（lib/index.js）。它同时
+#     · 提供 ctx.roundtable 服务（带 typertRemote 绑定，设置页经
+#       ctx.remote.roundtable.* 调用）；
+#     · 注册 roundtable_start / roundtable_status / roundtable_export 三个工具；
+#     · 注入 system prompt 段落 roundtable:personas。
+#   不要为同一入口再 insert 第二行：同一插件文件双实例注册会冲突。
+#
+# 用户可在 profile 的 cordis.patch.yml 里用同 id 行覆盖 config：
+#   - id: roundtable-harness
+#     name: dsh-roundtable-harness
+#     config:
+#       exposeTools: true
+#       injectPromptSection: true
+#       promptOrder: 1
+- insert:
+    - id: roundtable-harness
+      name: 'dsh-roundtable-harness'
