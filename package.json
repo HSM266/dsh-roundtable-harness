@@ -1,6 +1,6 @@
 {
   "name": "dsh-roundtable-harness",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "多模型圆桌辩论插件：让 DSH 里已配置的多个 AI 带着各自人设围绕同一话题多轮互喷，共享上下文，裁判按六维（攻击性/逻辑/人设还原度/趣味度/策略/深度）加权打分，性价比另用 dsh-cost-meter 真实账本单列，输出 Markdown 战报与 docx。Multi-model roundtable debate plugin for DeepSeek Harness.",
   "type": "module",
   "main": "lib/index.js",

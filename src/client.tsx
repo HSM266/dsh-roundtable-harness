@@ -473,6 +473,27 @@ export function totalWeightZero(config: { scoreWeights?: Record<string, number> 
 }
 
 /**
+ * Strip the quotes Explorer's "copy as path" leaves on a path.
+ *
+ * Pasting `"D:\pics\a.png"` into the avatar or output field is the normal way
+ * people fill it; the quotes would make an absolute path look relative and fail
+ * later at export time with a confusing ENOENT. Normalizing on save keeps the
+ * stored document clean instead of teaching every reader to strip them.
+ * @param value - whatever is in the field.
+ * @returns the path without one layer of matching quotes.
+ */
+function unquotePath(value: unknown): string {
+  let text = str(value).trim();
+  for (const [open, close] of [['"', '"'], ["'", "'"], ['“', '”'], ['「', '」']] as const) {
+    if (text.length >= 2 && text.startsWith(open) && text.endsWith(close)) {
+      text = text.slice(1, -1).trim();
+      break;
+    }
+  }
+  return text;
+}
+
+/**
  * Turn the editing draft into the payload that gets saved.
  *
  * This is the one place where "what the form shows" becomes "what the Host
@@ -502,7 +523,7 @@ export function finalizeDraft(draft: RoundtableConfig): RoundtableConfig {
         id,
         name: str(participant.name, id),
         persona: str(participant.persona),
-        avatar: str(participant.avatar),
+        avatar: unquotePath(participant.avatar),
         cheap: participant.cheap === true,
       };
     });
@@ -523,7 +544,7 @@ export function finalizeDraft(draft: RoundtableConfig): RoundtableConfig {
     requestTimeoutMs: clamp(num(draft.requestTimeoutMs, 120_000), 1_000, 600_000),
     sensitiveThreshold: clamp(num(draft.sensitiveThreshold, 3), 1, 100),
     topic: str(draft.topic),
-    outputDir: str(draft.outputDir),
+    outputDir: unquotePath(draft.outputDir),
     judge: {
       enabled: draft.judge?.enabled === true,
       provider: str(draft.judge?.provider),

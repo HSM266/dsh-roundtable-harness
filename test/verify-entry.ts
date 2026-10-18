@@ -26,8 +26,8 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isIP } from 'node:net';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import {
   applyEnvironmentOverrides,
@@ -587,6 +587,18 @@ export async function runAllChecks(): Promise<CheckResult[]> {
       '形象图本地路径：../ 穿越被拒，不读取目录外的文件',
       traversal.includes('超出导出目录'),
       traversal,
+    );
+
+    // 14c — "copy as path" quotes and file:// URLs must not break resolution.
+    const quoted = resolveAvatarPath(`"${join(dirRoot, 'a.png')}"`, dirRoot);
+    const quotedSingle = resolveAvatarPath(`'${join(dirRoot, 'b.png')}'`, dirRoot);
+    const asFileUrl = resolveAvatarPath(pathToFileURL(join(dirRoot, 'c.png')).href, dirRoot);
+    record(
+      '形象图路径：粘贴带引号的路径与 file:// 都能解析（不再拼成相对路径）',
+      quoted === resolve(join(dirRoot, 'a.png'))
+        && quotedSingle === resolve(join(dirRoot, 'b.png'))
+        && asFileUrl === resolve(join(dirRoot, 'c.png')),
+      `quoted=${quoted} fileUrl=${asFileUrl}`,
     );
 
     // 15 — judge replies with ids that match nobody: degraded, not "judged".

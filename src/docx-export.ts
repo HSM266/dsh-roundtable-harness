@@ -20,6 +20,7 @@
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { lookup } from 'node:dns/promises';
 import { extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { RunState, Speech, AnomalyRecord } from './roundtable.js';
 import { describeCostSource, describeCostStatus, describeStopReason, sanitizeText, timestampSlug } from './report.js';
 import { SCORE_DIMENSIONS, SCORE_DIMENSION_LABELS, describeWeights } from './dimensions.js';
@@ -337,18 +338,52 @@ async function downloadAvatar(url: URL): Promise<{ bytes: Uint8Array; type: Imag
 }
 
 /**
+ * Normalize an operator-supplied path.
+ *
+ * "Copy as path" on Windows yields `"D:\pics\a.png"` **with** the quotes, and
+ * pasting that into a form field is the normal way people fill this box. The
+ * quotes turn an absolute path into a relative-looking one, which then resolves
+ * against the output directory and fails with a confusing ENOENT. Stripping one
+ * layer of matching quotes (and expanding a `file://` URL) is what makes the
+ * obvious gesture work.
+ * @param reference - the raw reference.
+ * @returns the cleaned reference, possibly empty.
+ */
+export function normalizeLocalPath(reference: string): string {
+  let text = reference.trim();
+  const pairs: readonly (readonly [string, string])[] = [
+    ['"', '"'], ["'", "'"], ['“', '”'], ['「', '」'],
+  ];
+  for (const [open, close] of pairs) {
+    if (text.length >= 2 && text.startsWith(open) && text.endsWith(close)) {
+      text = text.slice(1, -1).trim();
+      break;
+    }
+  }
+  if (/^file:\/\//i.test(text)) {
+    try {
+      return fileURLToPath(text);
+    } catch {
+      return text;
+    }
+  }
+  return text;
+}
+
+/**
  * Resolve a local avatar reference to a path that is safe to read.
  *
  * A relative reference must stay inside `baseDir`; an absolute one may point
  * anywhere the operator typed explicitly, but must not smuggle `..` segments
  * through.
- * @param reference - the configured path.
+ * @param reference - the configured path (surrounding quotes and `file://` are tolerated).
  * @param baseDir - the directory relative paths resolve against.
  * @returns the absolute path.
  * @throws when the reference would leave `baseDir` or contains `..`.
  */
 export function resolveAvatarPath(reference: string, baseDir: string): string {
-  const trimmed = reference.trim();
+  const trimmed = normalizeLocalPath(reference);
+  if (trimmed.length === 0) throw new Error('形象图路径为空');
   const absolute = isAbsolute(trimmed);
   const path = absolute ? resolve(trimmed) : resolve(baseDir, trimmed);
   if (!absolute) {
@@ -367,7 +402,7 @@ async function readAvatar(
   reference: string,
   baseDir: string,
 ): Promise<{ bytes: Uint8Array; type: ImageType } | { error: string }> {
-  const trimmed = reference.trim();
+  const trimmed = normalizeLocalPath(reference);
   if (trimmed.length === 0) return { error: '未设置形象图' };
   try {
     if (/^https?:\/\//i.test(trimmed)) {
