@@ -337,7 +337,17 @@ export async function callModel(llm: LlmRuntime, options: CallModelOptions): Pro
     };
   }
   if (text.trim().length === 0) {
-    return { ok: false, kind: 'empty', message: '模型返回内容为空', elapsedMs };
+    // "Empty" is the least diagnosable outcome there is: providers return it for
+    // an exhausted budget, a content filter, or a stream that only carried
+    // usage. Carry the finish reason and whatever text did arrive so the anomaly
+    // record can say which one it was instead of just "no content".
+    const detail = [
+      '模型返回内容为空',
+      finishKind !== undefined ? `finish=${finishKind}` : '',
+      usage.totalTokens !== undefined ? `tokens=${usage.totalTokens}` : '',
+      text.length > 0 ? `原始片段=${text.slice(0, 40)}` : '',
+    ].filter((part) => part.length > 0).join('，');
+    return { ok: false, kind: 'empty', message: detail, elapsedMs };
   }
   return { ok: true, text, usage, elapsedMs, finishKind };
 }

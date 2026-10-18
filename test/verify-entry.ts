@@ -929,6 +929,35 @@ export function checkPollingWiring(): CheckResult {
 }
 
 /**
+ * Attribution wiring check.
+ *
+ * `dsh-cost-meter` batches its writes, so "the file changed" is not the same as
+ * "this model's cost landed". Waiting on the stamp alone produced reports that
+ * said "cannot attribute glm-5.3, the ledger shows dashscope:kimi-k3" — one
+ * speaker behind. This pins the call site to the model-specific wait.
+ * @returns one result.
+ */
+export function checkModelCostWait(): CheckResult {
+  const candidates = [
+    join(process.cwd(), 'src', 'roundtable.ts'),
+    join(process.cwd(), '..', 'src', 'roundtable.ts'),
+    fileURLToPath(new URL('../../src/roundtable.ts', import.meta.url)),
+  ];
+  const found = candidates.find((path) => existsSync(path));
+  if (found === undefined) {
+    return { name: '花费归因：等的是本模型那一笔，而不是「文件变过」', ok: false, detail: '找不到 src/roundtable.ts' };
+  }
+  const source = readFileSync(found, 'utf8');
+  const usesModelWait = source.includes('waitForModelCost(before, participant.model');
+  const noStampWait = !source.includes('waitForLedger(beforeStamp');
+  return {
+    name: '花费归因：等的是本模型那一笔，而不是「文件变过」',
+    ok: usesModelWait && noStampWait,
+    detail: `模型级等待=${usesModelWait} 仍用文件戳=${!noStampWait}`,
+  };
+}
+
+/**
  * Remote-envelope check.
  *
  * A Client Remote method resolves `{ok:true, value}` / `{ok:false, error}` — it

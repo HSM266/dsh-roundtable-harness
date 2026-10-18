@@ -170,6 +170,7 @@ async function main() {
   results.push(await module.runEnvelopeCheck());
   results.push(await module.runWiringCheck());
   results.push(module.checkPollingWiring());
+  results.push(module.checkModelCostWait());
   results.push(checkHookOrder());
   results.push(checkClientSlots());
 

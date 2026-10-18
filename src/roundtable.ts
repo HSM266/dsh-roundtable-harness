@@ -36,7 +36,7 @@ import {
   type CallFailureKind,
 } from './providers.js';
 import { compileScanner, screen, type SensitiveHit, type SensitiveScanner } from './sensitive.js';
-import { attributeTurnCost, ledgerStamp, readCostSnapshot, waitForLedger } from './cost.js';
+import { attributeTurnCost, readCostSnapshot, waitForModelCost } from './cost.js';
 import { DEFAULT_JUDGE_PERSONA, runJudge, type JudgeOutcome, type ParticipantCost } from './judge.js';
 import { buildMarkdownReport } from './report.js';
 import { resolveTarget } from './providers.js';
@@ -401,7 +401,6 @@ export class RoundtableRun {
     this.state.lastContextTokens = estimateMessagesTokens(system, messages);
 
     const before = readCostSnapshot();
-    const beforeStamp = ledgerStamp();
     const outcome = await callModel(llm, {
       provider: participant.provider,
       model: participant.model,
@@ -411,8 +410,9 @@ export class RoundtableRun {
       timeoutMs: config.requestTimeoutMs,
       signal: this.controller.signal,
     });
-    // Wait for cost-meter's write to land rather than sleeping a fixed 2 s.
-    if (!this.stopRequested) await waitForLedger(beforeStamp, this.controller.signal);
+    // Wait for *this model's* delta to land: cost-meter batches writes, so the
+    // first new write after a call may still belong to the previous speaker.
+    if (!this.stopRequested) await waitForModelCost(before, participant.model, this.controller.signal);
     const attribution = this.stopRequested
       ? { cost: 0, status: 'no-ledger' as const, unattributedKeys: [], matchedKeys: [] }
       : attributeTurnCost(before, readCostSnapshot(), participant.model);

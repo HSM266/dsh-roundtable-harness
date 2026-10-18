@@ -22,15 +22,15 @@ import { join } from 'node:path';
 import { resolveDshHome } from './config.js';
 
 /**
- * Delay that lets `dsh-cost-meter` flush its two-second write debounce.
+ * Delay that lets `dsh-cost-meter` flush its two-second write debounce plus the model's own bookkeeping; six seconds is long enough for a slow route to land and short enough not to stall a debate.
  * `ROUNDTABLE_LEDGER_SETTLE_MS` overrides it (the verification harness sets it
  * to 0 so a mock run does not sleep for the debounce it is not waiting on).
  */
 export const LEDGER_SETTLE_MS = ((): number => {
   const raw = process.env.ROUNDTABLE_LEDGER_SETTLE_MS;
-  if (raw === undefined) return 2_200;
+  if (raw === undefined) return 6_000;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 2_200;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 6_000;
 })();
 
 /** Cronological-ish key set the ledger uses for the five disjoint token buckets. */
@@ -203,6 +203,53 @@ export function ledgerStamp(path: string = resolveLedgerPath()): LedgerStamp | u
 
 /** Poll interval while waiting for the ledger write. */
 export const LEDGER_POLL_MS = 100;
+
+/**
+ * Wait until the ledger shows a **new cost for one specific model**.
+ *
+ * The old loop returned as soon as the file's stamp changed, which is not the
+ * same thing: cost-meter batches writes, so the first write after a call can
+ * still be the *previous* speaker's — the report then said "cannot attribute
+ * glm-5.3, the ledger shows dashscope:kimi-k3", one speaker behind. Waiting for
+ * the model's own delta to appear either returns quickly (the write landed) or
+ * honestly times out, which the attribution reports as `unmatched`.
+ * @param before - snapshot taken before the call.
+ * @param model - the model id the call requested.
+ * @param signal - caller cancellation.
+ * @param path - ledger path; defaults to the resolved one.
+ */
+export async function waitForModelCost(
+  before: CostSnapshot,
+  model: string,
+  signal?: AbortSignal,
+  path: string = resolveLedgerPath(),
+): Promise<void> {
+  if (signal?.aborted === true) return;
+  const sawModel = (snapshot: CostSnapshot): boolean => Object.entries(snapshot.byKey)
+    .some(([key, cost]) => modelOfKey(key) === model && cost > (before.byKey[key] ?? 0));
+  let aborted = false;
+  const onAbort = (): void => { aborted = true; };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const deadline = Date.now() + LEDGER_SETTLE_MS;
+    for (;;) {
+      if (sawModel(readCostSnapshot({ path }))) return;
+      if (Date.now() >= deadline) return;
+      await new Promise<void>((resolve) => {
+        const done = (): void => {
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', done);
+          resolve();
+        };
+        const timer = setTimeout(done, LEDGER_POLL_MS);
+        signal?.addEventListener('abort', done, { once: true });
+      });
+      if (aborted) return;
+    }
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
 
 /**
  * Wait until `dsh-cost-meter` writes the ledger, or the deadline passes.
