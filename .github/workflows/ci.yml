@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Type check
+        run: pnpm run typecheck
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Verify (offline mock providers + docx)
+        run: pnpm run verify
+
+      - name: Check the shipped artifacts exist
+        run: |
+          test -f lib/index.js
+          test -f lib/client.js
+          # The client half must be wrapped for the browser module loader; the
+          # host half must keep its exported apply() and the Remote parameter
+          # names the Typert Gateway reads back from source (no minification).
+          grep -q '__ModuleLoader__.load' lib/client.js
+          grep -q 'export {' lib/index.js
+          grep -q 'REMOTE_METHODS\|typertRemote' lib/index.js
+          grep -q 'methodParameterNames\|function getState' lib/index.js || grep -q 'getState' lib/index.js
+          wc -c lib/index.js lib/client.js

@@ -1,7 +1,7 @@
 {
   "name": "dsh-roundtable-harness",
-  "version": "0.3.8",
-  "description": "多模型圆桌辩论插件：读取 DSH 已配置的全部 Provider，让多个 AI 带着各自人设（含形象图）围绕同一话题多轮互喷，共享上下文，轮换裁判按「逻辑攻击力/人设还原度/性价比」打分（性价比取 dsh-cost-meter 真实账本），最后导出 Markdown《赛博圆桌战报》与 docx 战报。Multi-model roundtable debate plugin for DeepSeek Harness.",
+  "version": "0.3.9",
+  "description": "多模型圆桌辩论插件：让 DSH 里已配置的多个 AI 带着各自人设围绕同一话题多轮互喷，共享上下文，裁判按六维（攻击性/逻辑/人设还原度/趣味度/策略/深度）加权打分，性价比另用 dsh-cost-meter 真实账本单列，输出 Markdown 战报与 docx。Multi-model roundtable debate plugin for DeepSeek Harness.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -16,7 +16,8 @@
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "assets"
   ],
   "license": "MIT",
   "author": "HSM266",
@@ -102,5 +103,8 @@
     "@types/react": "^18.3.31",
     "esbuild": "^0.25.0",
     "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

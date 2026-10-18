@@ -2,6 +2,12 @@
 
 本文件只记「改变了什么行为」，不记实现细节。版本号遵循 semver。
 
+## 0.3.9
+
+- **修复** `package.json` 的 `description` 还停留在 0.1.x 的三维评分（逻辑攻击力 / 人设还原度 / 性价比），已改成六维 + 性价比单列的现状 —— npm 与插件市场的列表页直接读这个字段。
+- **改进** 补齐发包契约：加 `publishConfig.access = public`，`files` 纳入 `assets/`，`engines.node` 保持 `>=20`。
+- **核对** 逐项比对安装目录里的第三方 Bundle（`dsh-whale-widget` / `dsh-meme` / `dsh-onebot-qq`）与官方 `@deepseek-ai/*` 包：`main`、`exports`、`files`、`dsh.bundle.patch`、`dsh.client.platform`、`engines`、`license`、`repository`、`author` 均已具备，没有缺失项；`build-dsh-plugin` 这个 npm 包并不存在（registry 404），所以契约是按现有 Bundle 的清单人工对齐的。
+
 ## 0.3.8
 
 - **改进** 兼容范围放宽到 **DSH 0.2.x**：`dsh.compatibility.dsh` 与 `@deepseek-ai/dsh-llm` / `dsh-tools` / `dsh-typert-protocol` 三个 peer 都声明 `>=0.2.0-rc.1 <0.3.0-0`（此前钉死在 0.2.0-rc.2）。0.1.x 仍不支持。
