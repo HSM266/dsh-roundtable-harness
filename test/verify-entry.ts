@@ -48,7 +48,7 @@ import { computeValueScores, parseJudgePayload, buildJudgePrompt } from '../src/
 import { RoundtableRun, participantCostsOf, type RunState, type Speech } from '../src/roundtable.js';
 import { attributeTurnCost, type CostSnapshot } from '../src/cost.js';
 import { buildDocxReport, isPublicAddress, parseIPv6, resolveAvatarPath, sniffImageType } from '../src/docx-export.js';
-import { escapeMarkdown } from '../src/report.js';
+import { escapeMarkdown, summarizeLatency } from '../src/report.js';
 import { apply as applyPlugin, Config as PluginConfig, name as pluginName } from '../src/index.js';
 import { bindRemote, unwrap, finalizeDraft, parseNumericInput } from '../src/client.js';
 import { DEFAULT_SCORE_WEIGHTS, SCORE_DIMENSIONS, weightedTotal } from '../src/dimensions.js';
@@ -384,6 +384,24 @@ export async function runAllChecks(): Promise<CheckResult[]> {
     '花费归因：账本可读但无增量 → 记为无账本口径，不当作 0 元',
     idleLedger.cost === 0 && idleLedger.status === 'no-ledger',
     `cost=${idleLedger.cost} status=${idleLedger.status}`,
+  );
+
+  // 4b — latency table: answered turns only, failures counted separately.
+  const latencyRows = summarizeLatency([
+    { participantId: 'a', name: 'A', provider: 'p', model: 'm', round: 1, text: 'x', status: 'ok', usage: { inputTokens: 10, outputTokens: 100 }, cost: 0, costStatus: 'measured', unattributedKeys: [], elapsedMs: 1000, sensitiveHits: 0, contextTokens: 0 },
+    { participantId: 'a', name: 'A', provider: 'p', model: 'm', round: 2, text: 'x', status: 'ok', usage: { inputTokens: 10, outputTokens: 300 }, cost: 0, costStatus: 'measured', unattributedKeys: [], elapsedMs: 3000, sensitiveHits: 0, contextTokens: 0 },
+    { participantId: 'a', name: 'A', provider: 'p', model: 'm', round: 3, text: '', status: 'timeout', usage: { inputTokens: 0, outputTokens: 0 }, cost: 0, costStatus: 'no-ledger', unattributedKeys: [], elapsedMs: 60000, sensitiveHits: 0, contextTokens: 0 },
+    { participantId: 'b', name: 'B', provider: 'p', model: 'm', round: 1, text: '', status: 'empty', usage: { inputTokens: 0, outputTokens: 0 }, cost: 0, costStatus: 'no-ledger', unattributedKeys: [], elapsedMs: 900, sensitiveHits: 0, contextTokens: 0 },
+  ] as Speech[]);
+  const rowA = latencyRows.rows.find((row) => row.name === 'A');
+  const rowB = latencyRows.rows.find((row) => row.name === 'B');
+  record(
+    '耗时表：失败的轮次不进平均值，单独计超时/空响应',
+    rowA?.turns === 2 && rowA.averageMs === 2000 && rowA.timeouts === 1
+      && rowA.tokensPerSecond === '100.0'
+      && rowB?.turns === 0 && rowB.empties === 1
+      && latencyRows.slowest?.elapsedMs === 3000,
+    `A=${JSON.stringify(rowA)} B=${JSON.stringify(rowB)} 最慢=${JSON.stringify(latencyRows.slowest)}`,
   );
 
   // 5 — cost-effectiveness ranking excludes the unmeasured.

@@ -109,6 +109,76 @@ export function describeCostSource(source: RunState['costSource']): string {
   }
 }
 
+/**
+ * Per-participant latency and throughput, computed from the recorded turns.
+ *
+ * Only answered turns count toward the average: a timeout or an empty reply says
+ * nothing about how fast a route is when it does answer, and folding those in
+ * would make a provider look slow because it failed rather than because it was
+ * slow.
+ * @param speeches - every turn of the run.
+ * @returns rows per participant plus the single slowest turn.
+ */
+export function summarizeLatency(speeches: readonly Speech[]): {
+  rows: {
+    name: string;
+    turns: number;
+    averageMs: number;
+    outputTokens: number;
+    tokensPerSecond: string;
+    timeouts: number;
+    empties: number;
+  }[];
+  slowest?: { name: string; round: number; elapsedMs: number };
+} {
+  const order: string[] = [];
+  const grouped = new Map<string, {
+    name: string;
+    answered: number;
+    totalMs: number;
+    outputTokens: number;
+    timeouts: number;
+    empties: number;
+  }>();
+  let slowest: { name: string; round: number; elapsedMs: number } | undefined;
+  for (const speech of speeches) {
+    let entry = grouped.get(speech.participantId);
+    if (entry === undefined) {
+      entry = { name: speech.name, answered: 0, totalMs: 0, outputTokens: 0, timeouts: 0, empties: 0 };
+      grouped.set(speech.participantId, entry);
+      order.push(speech.participantId);
+    }
+    if (speech.status === 'ok') {
+      entry.answered += 1;
+      entry.totalMs += speech.elapsedMs;
+      entry.outputTokens += speech.usage.outputTokens;
+      if (slowest === undefined || speech.elapsedMs > slowest.elapsedMs) {
+        slowest = { name: speech.name, round: speech.round, elapsedMs: speech.elapsedMs };
+      }
+    } else if (speech.status === 'timeout') {
+      entry.timeouts += 1;
+    } else if (speech.status === 'empty') {
+      entry.empties += 1;
+    }
+  }
+  const rows = order.map((id) => {
+    const entry = grouped.get(id)!;
+    const averageMs = entry.answered === 0 ? 0 : Math.round(entry.totalMs / entry.answered);
+    const seconds = entry.totalMs / 1000;
+    const rate = seconds > 0 && entry.outputTokens > 0 ? (entry.outputTokens / seconds).toFixed(1) : '—';
+    return {
+      name: entry.name,
+      turns: entry.answered,
+      averageMs,
+      outputTokens: entry.outputTokens,
+      tokensPerSecond: rate,
+      timeouts: entry.timeouts,
+      empties: entry.empties,
+    };
+  });
+  return slowest === undefined ? { rows } : { rows, slowest };
+}
+
 /** Render one speech as a Markdown block. */
 function renderSpeech(speech: Speech): string {
   const header = `#### 第 ${speech.round} 轮 · ${escapeMarkdown(speech.name)}`;
@@ -233,6 +303,33 @@ export function renderMarkdownReport(state: RunState, options: ReportOptions): s
         }
         lines.push('');
       }
+    }
+  }
+
+  // ── 调用耗时 ─────────────────────────────────────────────────────────────
+  //
+  // Latency is what makes an operator blame a provider, so measure it instead of
+  // guessing: average wall time per turn, output tokens, output rate, and how
+  // often the turn did not answer at all. A 900 ms first token is not a problem;
+  // a 60 s timeout is, and this table tells them apart.
+  const latency = summarizeLatency(state.speeches);
+  if (latency.rows.length > 0) {
+    lines.push('## 调用耗时', '');
+    lines.push('| 选手 | 发言 | 平均耗时 | 输出 tokens | 输出速率 | 超时 | 空响应 |');
+    lines.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
+    for (const row of latency.rows) {
+      lines.push(
+        `| ${escapeMarkdown(row.name)} | ${row.turns} | ${row.averageMs} ms | ${row.outputTokens}`
+        + ` | ${row.tokensPerSecond} tok/s | ${row.timeouts} | ${row.empties} |`,
+      );
+    }
+    lines.push('');
+    if (latency.slowest !== undefined) {
+      lines.push(
+        `> 最慢一次：${escapeMarkdown(latency.slowest.name)} 第 ${latency.slowest.round} 轮 ${latency.slowest.elapsedMs} ms；`
+        + '超时次数按单次请求超过「讨论参数」里的超时阈值统计。',
+        '',
+      );
     }
   }
 
