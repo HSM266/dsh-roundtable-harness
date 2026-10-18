@@ -460,9 +460,33 @@ export function resolvePersona(participant: ParticipantConfig): string {
   return participant.persona;
 }
 
-/** Resolve the output directory, defaulting to the process working directory. */
+/**
+ * Resolve the directory that reports and docx files are written into.
+ *
+ * An empty `outputDir` used to mean "the host process's working directory",
+ * which on this machine was the *profile* directory — the export really did
+ * write there, but it is a program directory, it sits on the system drive, and
+ * nobody thinks to look inside it. The default is now `$DSH_HOME/roundtable`,
+ * next to `personas/`, so reports live with the rest of the plugin's data.
+ *
+ * A relative path still resolves against the working directory, so "reports"
+ * keeps meaning what it looks like: relative to the host.
+ * @param config - the stored configuration.
+ * @returns an absolute directory path (not guaranteed to exist yet).
+ */
 export function resolveOutputDir(config: RoundtableConfig): string {
   const configured = config.outputDir.trim();
-  if (configured.length === 0) return process.cwd();
+  if (configured.length === 0) return join(resolveDshHome(), 'roundtable', 'reports');
   return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
+}
+
+/**
+ * Create the output directory if it is missing.
+ *
+ * Writing a report used to assume the directory existed; a first run with a
+ * fresh `$DSH_HOME` therefore failed with ENOENT instead of just working.
+ * @param directory - the directory to ensure.
+ */
+export function ensureOutputDir(directory: string): void {
+  mkdirSync(directory, { recursive: true });
 }

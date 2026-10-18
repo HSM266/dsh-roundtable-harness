@@ -26,15 +26,18 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isIP } from 'node:net';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import {
   applyEnvironmentOverrides,
   defaultConfig,
+  ensureOutputDir,
   normalizeConfig,
   parseJudgeModel,
   isSafePersonaFile,
+  resolveDshHome,
+  resolveOutputDir,
   resolvePersona,
   resolvePersonaDir,
   resolvePersonaTarget,
@@ -239,6 +242,33 @@ export async function runAllChecks(): Promise<CheckResult[]> {
       && overridden.judge.persona === '你是裁判' && overridden.outputDir === '/tmp/out',
     `${JSON.stringify(parsedSlash)} / ${JSON.stringify(parsedColon)} / ${JSON.stringify(parsedBare)}`,
   );
+
+  // 2b — an empty outputDir must not fall back to the host's working directory
+  // (that was the profile directory, i.e. the system drive and a program folder).
+  const blankOut = defaultConfig();
+  blankOut.outputDir = '';
+  const defaultOut = resolveOutputDir(blankOut);
+  const relativeOut = defaultConfig();
+  relativeOut.outputDir = 'reports';
+  const resolvedRelative = resolveOutputDir(relativeOut);
+  record(
+    '输出目录：留空不再落到宿主工作目录，相对路径仍按工作目录解析',
+    isAbsolute(defaultOut)
+      && defaultOut === join(resolveDshHome(), 'roundtable', 'reports')
+      && resolvedRelative === resolve(process.cwd(), 'reports'),
+    `default=${defaultOut} relative=${resolvedRelative}`,
+  );
+  // The directory is created on demand rather than assumed to exist.
+  const outBase = mkdtempSync(join(tmpdir(), 'roundtable-outdir-'));
+  const freshOut = join(outBase, 'nested', 'deep', 'reports');
+  let created = false;
+  try {
+    ensureOutputDir(freshOut);
+    created = existsSync(freshOut);
+  } catch (error) {
+    record('输出目录：缺失时自动创建', false, (error as Error).message);
+  }
+  if (created) record('输出目录：缺失时自动创建', true, freshOut);
 
   // 3 — sensitive screening: redaction, folding, zero-width and ReDoS refusal.
   const scanner = compileScanner({
